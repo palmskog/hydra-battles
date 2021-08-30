@@ -21,26 +21,22 @@ Local Open Scope ON_scope.
 *)
 
 (* begin snippet ONDef *)
-Class ON {A:Type}(lt: relation A)
-      (compare: A -> A -> comparison) :=
-  {
-  comp :> Comparable lt compare;
-  wf : well_founded lt;
-  }.
+Class ON {A:Type} (lt: relation A) (cmp: Compare A) : Prop := {
+  ON_comp :> Comparable lt cmp;
+  ON_wf : well_founded lt;
+}.
 (* end snippet ONDef *)
 
 (* begin snippet ONDefsa:: no-out  *)
 Section Definitions.
   
-  Context  {A:Type}{lt : relation A}
-           {compare : A -> A -> comparison}
-           {on : ON lt compare}.
+  Context  {A} {lt : relation A} {cmp : Compare A} {on: ON lt cmp}.
   
   #[using="All"]
    Definition ON_t := A.
 
   #[using="All"]
-   Definition ON_compare := compare.
+   Definition ON_compare : A -> A -> comparison := compare.
 
   #[using="All"]
    Definition ON_lt := lt.
@@ -60,7 +56,7 @@ Section Definitions.
   Proof.
     intro x; eapply Acc_incl  with (fun x y =>  ON_lt (m x) (m  y)).
     - intros y z H; apply H.
-    - eapply Acc_inverse_image, wf.
+    - eapply Acc_inverse_image, ON_wf.
   Qed.
 
   (* begin snippet ONDefsb *)
@@ -91,18 +87,12 @@ Global Hint Resolve wf_measure : core.
 
 (* begin snippet SubONDef *)
 
-Class  SubON 
-       `(OA: @ON A ltA compareA)
-       `(OB: @ON B ltB compareB)
-       (alpha:  B)
-       (iota: A -> B):=
-  {
-  SubON_compare: forall x y : A,
-      compareB (iota x) (iota y) =
-      compareA x y;
+Class SubON `(OA: @ON A ltA compareA) `(OB: @ON B ltB compareB)
+ (alpha : B) (iota: A -> B) : Prop := {
+  SubON_compare: forall x y : A, compare (iota x) (iota y) = compare x y;
   SubON_incl : forall x, ltB (iota x) alpha;
-  SubON_onto : forall y,
-      ltB y alpha  -> exists x:A, iota x = y}.
+  SubON_onto : forall y, ltB y alpha -> exists x:A, iota x = y
+}.
 
 (* end snippet SubONDef *)
 
@@ -110,17 +100,12 @@ Class  SubON
 
 (* begin snippet ONIso *)
 
-Class  ON_Iso 
-       `(OA : @ON A ltA compareA)
-       `(OB : @ON B ltB compareB)
-       (f : A -> B)
-       (g : B -> A):=
-  {
-  iso_compare :forall x y : A,  compareB (f x) (f y) =
-                                compareA x y;
-  iso_inv1 : forall a, g (f a)= a;
+Class ON_Iso `(OA : @ON A ltA compareA) `(OB : @ON B ltB compareB)
+ (f : A -> B) (g : B -> A) : Prop := {
+  iso_compare : forall x y : A, compare (f x) (f y) = compare x y;
+  iso_inv1 : forall a, g (f a) = a;
   iso_inv2 : forall b, f (g b) = b
-  }.
+}.
 
 (* end snippet ONIso *)
 
@@ -128,18 +113,12 @@ Class  ON_Iso
 
 (* begin snippet ONCorrect *)
 
-Class ON_correct `(alpha : Ord)
-     `(OA : @ON A ltA compareA)
-      (iota : A -> Ord) :=
+Class ON_correct `(OA : @ON A ltA compareA)
+ (alpha : Ord) (iota : A -> Ord) : Prop :=
   { ON_correct_inj : forall a, lt (iota a) alpha;
-    ON_correct_onto : forall beta, lt beta alpha ->
-                                exists b, iota b = beta;
-    On_compare_spec : forall a b:A,
-        match compareA a b with
-          Datatypes.Lt => lt (iota a) (iota b)
-        | Datatypes.Eq => iota a = iota b
-        | Datatypes.Gt => lt (iota b) (iota a)
-        end
+    ON_correct_onto : forall beta, lt beta alpha -> exists b, iota b = beta;
+    On_correct_compare_spec :  forall a b:A, CompareSpec
+     (iota a = iota b) (lt (iota a) (iota b)) (lt (iota b) (iota a)) (compare a b)
   }.
 
 (* end snippet ONCorrect *)
@@ -187,7 +166,7 @@ Definition SubON_same_op `{OA : @ON A ltA compareA}
 Definition ON_cst_ok  {alpha: Ord} `{OA : @ON A ltA compareA}
        `{OB : @ON B ltB  compareB}
        {iota : A -> Ord} 
-       {_ : ON_correct alpha OA iota}
+       {_ : ON_correct OA alpha iota}
        (a: A)
        (b: Ord)
   := iota a = b.
@@ -197,7 +176,7 @@ Definition ON_cst_ok  {alpha: Ord} `{OA : @ON A ltA compareA}
 Definition ON_fun_ok  {alpha: Ord} `{OA : @ON A ltA   compareA}
        `{OB : @ON B ltB   compareB}
        {iota : A -> Ord} 
-       {_ : ON_correct alpha OA iota}
+       {_ : ON_correct OA alpha iota}
        (f : A -> A)
        (g : Ord  -> Ord)
   :=
@@ -206,7 +185,7 @@ Definition ON_fun_ok  {alpha: Ord} `{OA : @ON A ltA   compareA}
 Definition ON_op_ok  {alpha: Ord} `{OA : @ON A ltA  compareA}
        `{OB : @ON B ltB compareB}
        {iota : A -> Ord} 
-       {_ : ON_correct alpha OA iota}
+       {_ : ON_correct OA alpha iota}
        (f : A -> A -> A)
        (g : Ord -> Ord -> Ord)
   :=
@@ -342,7 +321,3 @@ Section SubON_properties.
   Qed.
   
 End SubON_properties.
-
-
-
-

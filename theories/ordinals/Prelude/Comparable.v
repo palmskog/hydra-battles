@@ -1,38 +1,35 @@
 From Coq Require Import Relations RelationClasses Setoid.
 Require Export MoreOrders.
 
-
 (* begin snippet ComparableDef *)
-Class Comparable {A:Type} 
-  (lt: relation A)
-  (compare : A -> A -> comparison) :=
-  {
+Class Compare A := compare : A -> A -> comparison.
+#[export] Hint Mode Compare ! : typeclass_instances.
+
+Class Comparable {A} (lt: relation A) (cmp : Compare A) : Prop := {
   sto :> StrictOrder lt;
-  compare_correct: forall a b,
-      CompareSpec (a = b) (lt a b) (lt b a) (compare a b);
-  }.
+  compare_correct: forall a b, CompareSpec (a = b) (lt a b) (lt b a) (compare a b);
+}.
+#[export] Hint Mode Comparable ! - - : typeclass_instances.
 (* end snippet ComparableDef *)
 
 Section Comparable.
 
-  Context {A: Type}
-          {lt: relation A}
-          {compare : A -> A -> comparison}
-          {comparable : Comparable lt compare}.
-  #[local] Notation le := (leq lt). 
+  Context {A} {lt : relation A} {cmp: Compare A} `{!Comparable lt cmp}.
+  #[local] Notation le := (leq lt).
 
   #[deprecated(note="use StrictOrder_Transitive")]
-   Notation lt_trans := StrictOrder_Transitive (only parsing).
+  Notation lt_trans := StrictOrder_Transitive (only parsing).
 
   #[deprecated(note="use StrictOrder_Irreflexive")] 
-   Notation lt_irrefl := StrictOrder_Irreflexive (only parsing).
+  Notation lt_irrefl := StrictOrder_Irreflexive (only parsing).
   
   (* Relation Lt *)
   Lemma lt_not_gt (a b: A):
     lt a b -> ~lt b a.
   Proof.
     intros Hlt Hgt.
-    apply StrictOrder_Irreflexive with a; now transitivity b.
+    apply StrictOrder_Irreflexive with a.
+    now transitivity b.
   Qed.
 
   Lemma lt_not_ge (a b: A):
@@ -44,39 +41,6 @@ Section Comparable.
     - subst; now apply StrictOrder_Irreflexive in Hlt.
   Qed.
 
-  #[using="All"]
-  Definition lt_b (a b: A): bool :=
-    match compare a b with
-    | Lt => true
-    | _ => false
-    end.
-
-  Lemma lt_b_iff (a b: A):
-    lt_b a b = true <-> lt a b.
-  Proof.
-    unfold lt_b.
-    pose proof (compare_correct a b) as [Heq | H | H];
-    split; intro; subst; try easy.
-    - now apply StrictOrder_Irreflexive  in H.
-    - now apply lt_not_gt in H.
-  Qed.
-
-  Lemma lt_b_false_iff (a b: A):
-    lt_b a b = false  <-> ~ lt a b.
-  Proof.
-     unfold lt_b.
-    pose proof (compare_correct a b) as [Heq | H | H];
-    split; intro; subst; try easy.
-    - apply StrictOrder_Irreflexive.   
-    - now apply lt_not_gt.
-  Qed.
-
-  Lemma lt_b_irrefl (a :A) :
-    lt_b a a = false.
-  Proof. 
-   rewrite lt_b_false_iff; apply StrictOrder_Irreflexive.   
-  Qed.
-  
   Lemma compare_lt_iff (a b: A):
     compare a b = Lt <-> lt a b.
   Proof.
@@ -101,24 +65,6 @@ Section Comparable.
     now apply compare_lt_iff, StrictOrder_Irreflexive in H.
   Qed.
 
-  (* Relation Eq *)
-  #[using="All"]
-  Definition eq_b (a b: A): bool :=
-    match compare a b with
-    | Eq => true
-    | _ => false
-    end.
-
-
-  Lemma eq_b_iff (a b: A):
-    eq_b a b = true <-> a = b.
-  Proof.
-    unfold eq_b.
-    pose proof (compare_correct a b) as [Heq | H | H];
-    split; intro; subst; try easy;
-    now apply StrictOrder_Irreflexive in H.
-  Qed.
-
   Lemma compare_eq_iff (a b: A):
     compare a b = Eq <-> a = b.
   Proof.
@@ -126,7 +72,6 @@ Section Comparable.
     split; intro; subst; try easy;
     now apply StrictOrder_Irreflexive in H.
   Qed.
-
 
   Lemma compare_refl (a: A):
     compare a a = Eq.
@@ -144,7 +89,6 @@ Section Comparable.
     now subst.
   Qed.
 
-
   (* Relation Gt *)
   Lemma compare_gt_iff (a b: A):
     compare a b = Gt <-> lt b a.
@@ -154,7 +98,6 @@ Section Comparable.
     - now apply StrictOrder_Irreflexive in H.
     - now apply lt_not_gt in H.
   Qed.
-
 
   Lemma compare_gt_irrefl (a: A):
     ~compare a a = Gt.
@@ -171,7 +114,6 @@ Section Comparable.
     now transitivity b.
   Qed.
 
-
   Lemma compare_lt_not_gt (a b: A):
     compare a b = Lt -> ~ compare a b = Gt.
   Proof.
@@ -181,7 +123,6 @@ Section Comparable.
     now apply lt_not_gt in Hgt.
   Qed.
 
-
   Lemma compare_gt_not_lt (a b: A):
     compare a b = Gt -> ~ compare a b = Lt.
   Proof.
@@ -190,31 +131,6 @@ Section Comparable.
     apply compare_gt_iff in Hgt.
     now apply lt_not_gt in Hgt.
   Qed.
-
-  (* Relation Le *)
-  #[using="All"]
-  Definition le_b (a b: A): bool :=
-    negb (lt_b b a).
-
-  Lemma le_b_iff (a b: A):
-    le_b a b = true <-> le a b.
-  Proof.
-    unfold le_b, negb, lt_b.
-    pose proof (compare_correct a b) as [Heq | Hlt | Hgt];
-    split; intro; subst; try easy.
-    - apply le_lt_eq; now right.
-    - now rewrite compare_refl.
-    - apply le_lt_eq; now left.
-    - now apply compare_gt_iff in Hlt as ->.
-    - apply compare_lt_iff in Hgt.
-      rewrite Hgt in H.
-      congruence.
-    - exfalso.
-      apply le_lt_eq in H as [Hlt | Heq].
-      * now apply lt_not_gt in Hgt.
-      * rewrite Heq in Hgt; now apply StrictOrder_Irreflexive in Hgt.
-  Qed.
-
 
   Lemma le_refl (a: A): le a a.
   Proof.
@@ -240,7 +156,6 @@ Section Comparable.
       * left; now apply compare_lt_iff.
       * right; now apply compare_eq_iff in Heq.
   Qed.
-
 
   Lemma compare_ge_iff (a b: A):
     le b a <-> compare a b = Gt \/ compare a b = Eq.
@@ -352,7 +267,6 @@ Section Comparable.
         now apply compare_gt_irrefl in Hab.
   Qed.
 
-
   Lemma max_refl (a: A):  max a a = a.
   Proof.
     apply max_ge_a, le_refl.
@@ -426,8 +340,6 @@ Section Comparable.
     rewrite min_max_iff, min_comm, min_max_iff, max_comm.
     now apply max_dec.
   Qed.
-
-
 
   Lemma min_le_ad (a b: A):
     le a b <-> min a b = a.
@@ -516,7 +428,6 @@ Section Comparable.
     pose proof (compare_correct a b) as [Heq | Hlt | Hgt]; assumption.
   Qed.
 
-
   Lemma lt_eq_lt:
     forall alpha beta, lt alpha  beta \/ alpha = beta \/ lt beta alpha.
   Proof.
@@ -532,9 +443,6 @@ Section Comparable.
     - right; now rewrite <- compare_gt_iff.
   Defined.
 
-
-
-
   Lemma LimitNotSucc 
         (alpha: A)  :
     Limit alpha -> forall beta, ~ Successor alpha beta.
@@ -545,8 +453,6 @@ Section Comparable.
     - subst w;  destruct (H0 _ H1) as [z [H3 H4]]; apply (H2 z);auto.
     - destruct (H0 beta H1) as [z [H4 H5]]; eauto.
   Qed.
-
-
 
 End Comparable.
 
@@ -580,7 +486,3 @@ Ltac compare_destruct_eqn a b H :=
 
 Tactic Notation "compare" "destruct" constr(a) constr(b) "as" ident(H) :=
   compare_destruct_eqn a b H.
-
-
-
-

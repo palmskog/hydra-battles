@@ -11,8 +11,6 @@ From hydras Require Import ON_Generic.
 Require Wf_nat.
 
 
-
-
 Coercion is_true: bool >-> Sortclass.
 
 (* begin snippet Defs *)
@@ -46,8 +44,8 @@ Abort.
 
 (* begin snippet compareDef:: no-out *)
 
-Definition compare {n:nat} (alpha beta : t n) :=
-  Nat.compare (proj1_sig alpha) (proj1_sig beta).
+Instance compare {n:nat} : Compare (t n) :=
+  fun (alpha beta : t n) => Nat.compare (proj1_sig alpha) (proj1_sig beta).
  
 
 Lemma compare_correct {n} (alpha beta : t n) :

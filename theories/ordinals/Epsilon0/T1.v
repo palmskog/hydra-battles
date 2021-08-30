@@ -150,17 +150,18 @@ Inductive ap : T1 -> Prop :=
 
 (* begin snippet compareDef *)
 
-Fixpoint compare (alpha beta:T1):comparison :=
+Instance compare : Compare T1 := 
+ fix cmp (alpha beta:T1) :=
   match alpha, beta with
   | zero, zero => Eq
   | zero, ocons a' n' b' => Lt
   | _   , zero => Gt
   | (ocons a n b),(ocons a' n' b') =>
-      (match compare a a' with 
+      (match cmp a a' with 
        | Lt => Lt
        | Gt => Gt
        | Eq => (match Nat.compare n n' with
-                | Eq => compare b b'
+                | Eq => cmp b b'
                 | comp => comp
                 end)
        end)
@@ -501,19 +502,125 @@ Qed.
 Cantor normal form needs the exponents of omega to be
    in strict decreasing order *)
 
+Instance comparison_eq_dec : EqDecision comparison.
+Proof.
+intros c1 c2; unfold Decision.
+decide equality.
+Defined.
+  
+Instance lt_dec : RelDecision lt :=
+fun alpha beta => decide (compare alpha beta = Lt).
+
 (* begin snippet nfDef *)
 
-Fixpoint nf_b (alpha : T1) : bool :=
-  match alpha with
-  | zero => true
-  | ocons a n zero => nf_b a
-  | ocons a n ((ocons a' n' b') as b) =>
-      (nf_b a && nf_b b && lt_b a' a)%bool
-  end.
+Fixpoint nf (alpha : T1) : Prop :=
+ match alpha with
+ | zero => True
+ | ocons a n zero => nf a
+ | ocons a n ((ocons a' n' b') as b) =>
+   nf a /\ nf b /\ lt a' a
+ end.
 
-Definition nf alpha :Prop := 
-  nf_b alpha.
+Fixpoint T1_size (alpha : T1) : nat :=
+ match alpha with
+ | zero => 0
+ | ocons a n b => S (T1_size a + T1_size b)
+ end.
 
+Program Definition nf_dec_F (alpha : T1)
+ (nf_dec_rec : forall (alpha' : T1), T1_size alpha' < T1_size alpha -> Decision (nf alpha')) :
+ Decision (nf alpha) :=
+match alpha with
+| zero => left _
+| ocons a n zero =>
+  match nf_dec_rec a _ with
+  | left _ => left _
+  | right _ => right _
+  end
+| ocons a n (ocons a' n' b') =>
+  match nf_dec_rec a _ with
+  | right _ => right _
+  | left _ =>
+    match nf_dec_rec (ocons a' n' b') _ with
+    | right _ => right _
+    | left _ => 
+      match decide (lt a' a) with
+      | right _ => right _
+      | left _ => left _
+      end
+    end
+  end
+ end.
+Next Obligation.
+simpl; lia.
+Defined.
+Next Obligation.
+simpl; lia.
+Defined.
+Next Obligation.
+clear Heq_anonymous.
+intros [Hnf [Hnf' Hlt]]; tauto.
+Defined.
+Next Obligation.
+simpl; lia.
+Defined.
+Next Obligation.
+clear Heq_anonymous.
+intros [Hnf [Hnf' Hlt]]; tauto.
+Defined.
+Next Obligation.
+clear Heq_anonymous.
+intros [Hnf [Hnf' Hlt]]; tauto.
+Defined.
+
+Program Instance nf_dec : forall (alpha : T1), Decision (nf alpha) :=
+well_founded_induction (well_founded_lt_compat _ T1_size _ _) _ nf_dec_F.
+
+(*
+Definition nf_dec_F (alpha : T1)
+ (nf_dec_rec : forall (alpha' : T1), T1_size alpha' < T1_size alpha -> Decision (nf alpha')) :
+ Decision (nf alpha).
+refine 
+(match alpha as a return (alpha = a -> _) with
+| zero => fun _ => left _
+| ocons a n zero =>
+  fun _ =>
+  match nf_dec_rec a _ with
+  | left _ => left _
+  | right _ => right _
+  end
+| ocons a n (ocons a' n' b') =>
+  fun _ =>
+  match nf_dec_rec a _ with
+  | right _ => right _
+  | left _ =>
+    match nf_dec_rec (ocons a' n' b') _ with
+    | right _ => right _
+    | left _ => 
+      match decide (lt a' a) with
+      | right _ => right _
+      | left _ => left _
+      end
+    end
+  end
+ end (eq_refl _)).
+- simpl; trivial.
+- rewrite e. simpl. lia.
+- simpl; trivial.
+- simpl; trivial.
+- rewrite e; simpl. lia.
+- rewrite e; simpl. lia.
+- clear e; destruct b'.
+  * simpl in *; tauto.
+  * split; [assumption|].
+    split; [|assumption].
+    destruct n1 as [Ha' [Hc Hlt]].
+    split; [|split]; assumption.
+- intros [Hnf [Hnf' Hlt]]; tauto.
+- intros [Hnf [Hnf' Hlt]]; tauto.
+- intros [Hnf [Hnf' Hlt]]; tauto.
+Defined.
+*)
 
 (* end snippet nfDef *)
 
@@ -679,119 +786,53 @@ Lemma ocons_nf :
   nf(ocons a' n' b)->
   nf(ocons a n (ocons a' n' b)).
 Proof.
-  unfold nf.
-  simpl.
   intros a n a' n' b' Hlta Ha.
-  apply lt_b_iff in Hlta as ->.
+  simpl.
   destruct b'.
   - intro Hnfa'.
-    now rewrite Ha, Hnfa'.
-  - rewrite Ha.
-    simpl.
-    destruct b'2; intro H; now rewrite H.
+    tauto.
+  - intros [Ha' [Hb' Hlt]].
+    destruct b'2; tauto.
 Qed.
 
 Global Hint Resolve zero_nf single_nf ocons_nf: T1.
 
-
 Lemma nf_inv1 :
   forall a n b, nf (ocons a n b) -> nf a.
 Proof.
-  unfold nf; destruct b; cbn.
+  destruct b; cbn.
   - auto.
-  - destruct (nf_b a); auto.
+  - intros [Hnf Hb]; assumption.
 Qed.
 
 Lemma nf_inv2 :
   forall a n b, nf (ocons a n b) -> nf b.
 Proof.
-  unfold nf; cbn; destruct a, b;  auto with T1.
-  destruct (nf_b (ocons b1 n0 b2)); auto. 
-  destruct (nf_b (ocons b1 n1 b2)); auto.
-  destruct (nf_b (ocons a1 n a2)); auto.
+  intros a n b Hnf.
+  destruct b; simpl in *; auto.
+  destruct Hnf as [Ha [Hb Hlt]].
+  assumption.
 Qed.
-
 
 Lemma nf_inv3 :
   forall a n  a' n' b',
   nf (ocons a n (ocons a' n' b')) -> lt a' a.
 Proof.
-  unfold nf; cbn;
-  destruct a, a', b'; try discriminate; auto with T1;
-  intro H; red in H; repeat rewrite andb_true_iff in H; 
-  decompose [and] H; apply lt_b_iff; auto.
+  intros a n a' n' b' [Ha [Hb Hlt]].
+  assumption.
 Qed.
 
-
-
-Lemma nf_cons_inv a n b : nf (ocons a n b) -> nf a /\ nf b /\ lt b (phi0 a).
-Proof. 
-  unfold nf; cbn; destruct b. 
-  -  repeat split; auto with T1.
-  - intro H; red in H; repeat rewrite andb_true_iff in H;
-   decompose [and]  H; repeat split; auto.
-   red; cbn; unfold lt_b in H1; destruct (compare b1 a); try discriminate. 
-   trivial. 
-Qed. 
-
-Lemma nf_cons_iff a n b : nf (ocons a n b) <-> nf a /\ nf b /\ lt b (phi0 a).
-Proof. 
-  split.
-  - apply nf_cons_inv.
-  - intros [H1 [H2 H3]]; destruct b.     
-    + now apply single_nf. 
-    + apply ocons_nf; eauto with T1.
-      destruct (lt_inv H3); trivial.
-      decompose [or and] H.
-      * lia.
-      *  exfalso; eapply not_lt_zero; eauto.
-Qed.
-
-(** already in Stdlib ? *)
-
-Lemma bool_eq_iff (b b':bool) : (b = b') <-> (b <-> b').
-Proof.
- split.
- - intro; subst; tauto.
- - case b; case b'; auto; destruct 1 as [H H0].
-   assert (false)  by (now apply H);  discriminate.
-    assert (false)  by (now apply H0);  discriminate.
-Qed.
-
-
-Lemma lt_b_lt_iff a b : lt_b a b <-> lt a b.
-Proof.
-  split.
-  - intro H;red in H; now rewrite lt_b_iff in H.  
-  - intro; red; now rewrite  lt_b_iff.
-Qed.
-
-
-Lemma nf_b_cons_eq a n b : nf_b (ocons a n b) =
-                           nf_b a && nf_b b && lt_b b (phi0 a).
-Proof.
-  rewrite bool_eq_iff; generalize (nf_cons_iff a n b); unfold nf;
-    intro H; rewrite H.
-  rewrite <- lt_b_lt_iff; split. 
-  -  case (nf_b a); case (nf_b b); case_eq (lt_b b (phi0 a));
-       cbn; auto with bool;
-         intros _ H0; decompose [and] H0; try discriminate.
-  -  intro H0;  red in H0; repeat rewrite andb_true_iff in H0; 
-       decompose [and] H0;  now rewrite H2, H3, H4.
-Qed.
-
-      
 Ltac nf_decomp H :=
   let nf0 := fresh "nf"
   in let nf1 := fresh "nf"
      in let Hlp := fresh "lt"
      in
      match type of H with
-     | nf (ocons ?t ?n zero) => assert (nf0:= nf_inv1 H)
+     | nf (ocons ?t ?n zero) => assert (nf0:= nf_inv1 _ _ _ H)
      | nf (ocons ?t1 ?n (ocons ?t2 ?p ?t3))
-       => assert (nf0 := nf_inv1 H); assert(nf1 := nf_inv2 H);
-          assert (lt := nf_inv3 H)
-     | nf (ocons ?t1 ?n ?t2) => assert (nf0 := nf_inv1 H); assert(nf1 := nf_inv2 H)
+       => assert (nf0 := nf_inv1 _ _ _ H); assert(nf1 := nf_inv2 _ _ _ H);
+          assert (lt := nf_inv3 _ _ _ _ _ H)
+     | nf (ocons ?t1 ?n ?t2) => assert (nf0 := nf_inv1 _ _ _ H); assert(nf1 := nf_inv2 _ _ _ H)
      end.
 
 (**  lt alpha (phi0 beta)  *)
@@ -1055,39 +1096,35 @@ Proof.
   - right; apply le_lt_eq ; now left. 
 Defined.
 
-
-Instance epsilon0_pre_order : TotalDecPreOrder (leq lt).
+Instance epsilon0_dec : RelDecision (leq lt).
 Proof.
-  do 2 split.
+intros a b.
+destruct (lt_eq_lt_dec a b) as [[Hlt | Heq] | Hgt].
+- now do 2 left.
+- subst; now left; right.
+- right; now apply lt_not_ge.
+Defined.
+
+Instance epsilon0_pre_order : TotalPreOrder (leq lt).
+Proof.
+  split; [split|].
   - intro x; apply le_refl.
   - red; apply le_trans.
   - intros a b.
     destruct (lt_le_dec a b).
     + now do 2 left.
     + now right.
-  - intros a b.
-    destruct (lt_eq_lt_dec a b) as [[Hlt | Heq] | Hgt].
-    + now do 2 left.
-    + subst; now left; right.
-    + right; now apply lt_not_ge.
-Defined.
-
-
-Ltac auto_nf :=
-  match goal with
-    |- nf ?alpha =>
-    ( repeat (apply ocons_nf || apply single_nf || apply zero_nf))
-    || (eapply nf_inv1 || eapply nf_inv2); eauto
-  end.
+Qed.
 
 Lemma nf_tail_lt_nf b b':
   lt b' b -> nf b' ->
-  forall a n,   nf (ocons a n b) -> nf (ocons a n b').
+  forall a n, nf (ocons a n b) -> nf (ocons a n b').
 Proof.
  intros H H0 a n H1; destruct b. 
  - destruct (not_lt_zero  H).
  - destruct b'.
-  + do 2 auto_nf.
+  + apply single_nf.
+    eapply nf_inv1; eauto.
   + destruct (lt_inv H).
     * apply ocons_nf; trivial.
       -- apply lt_trans with b1; auto.
@@ -1102,7 +1139,6 @@ Proof.
         -- eapply nf_inv3; eauto.
         -- eapply nf_inv1; eauto.
 Qed.
-
 
 Lemma tail_lt_ocons : 
   forall b n a,
@@ -1143,13 +1179,10 @@ Qed.
 Lemma nf_helper_intro :
   forall a n b, nf (ocons a n b) -> nf_helper b a.
 Proof.
-  intros a n b H; unfold nf in H; cbn in H.
+  intros a n b H; cbn in H.
   destruct b.
   - constructor.
-  - red in H.
-    repeat rewrite andb_true_iff in H. 
-    destruct H as ((_, _), Hlt).
-    apply lt_b_iff in Hlt.
+  - destruct H as [Ha [Hb Hlt]].
     now right.
 Qed.
 
@@ -1205,7 +1238,9 @@ Proof.
   intros P H0 Hfinite Hcons; induction a.
   -  trivial.
   -  generalize IHa1;case a1.
-     + intros IHc0 H; rewrite (nf_of_finite H);  apply Hfinite.
+     + intros IHc0 H.
+       rewrite (nf_of_finite _ _ H).
+       apply Hfinite.
      + intros c n0 c0 IHc0 H2; apply Hcons.
         * eapply nf_inv1;eauto.
         * apply IHc0; eapply nf_inv1; eauto.
@@ -1621,7 +1656,7 @@ Module Direct_proof.
          -  intros t n t0 H1; case H1;  destruct 2;
               case (lt_inv H3).
             + intro H5;generalize H2;case n.
-              { inversion 1.
+              { inversion 0.
                 - intros; apply IHalpha.
                   + split.
                     * apply nf_inv1 in H2. auto. 
@@ -1727,11 +1762,12 @@ Corollary T1_wf : well_founded LT. (* .no-out *)
 (* end snippet T1Wf *)
 
 Proof.
-  intros alpha; case_eq(nf_b alpha).
-  - intro H; now generalize (nf_Wf H).
-  - intros H; split.
+  intros alpha; destruct (decide (nf alpha)).
+  - apply (nf_Wf alpha).
+    assumption.
+  - split; intros alpha'.
     destruct 1 as [H1 [H2 H3]].
-    red in H3; rewrite H in H3; discriminate.
+    tauto.
 Qed.
 
 Definition transfinite_recursor_lt :
@@ -1785,11 +1821,20 @@ Proof.
   induction alpha.
   -  simpl;repeat constructor; auto  with arith.
   -  simpl; generalize IHalpha1 ; case alpha1.
-     +  simpl;repeat constructor; auto.
-     + intros c n0 c0 H H0;  apply nf_intro.
-       * eapply nf_inv1; eauto.
-       *  apply IHalpha2; eapply nf_inv2 ; eauto.
-       * apply succ_nf_helper; eapply nf_helper_intro; eauto.
+     + simpl;repeat constructor; auto.
+     + intros c n0 c0 H H0; apply nf_intro.
+       * destruct alpha2; [assumption|].
+         destruct H0 as [Ha [Hb Hlt]].
+         assumption.
+       * apply IHalpha2.
+         destruct alpha2; [simpl; tauto|].
+         destruct H0 as [Ha [Hb Hlt]].
+         assumption.
+       * apply succ_nf_helper. 
+         destruct alpha2; [apply nf_helper_z|].
+         destruct H0 as [Ha [Hb Hlt]].
+         apply nf_helper_c.
+         assumption.
 Qed.
 
 (** **  properties of addition *)
@@ -1832,7 +1877,12 @@ Proof.
        * simpl; rewrite succ_is_plus_one; auto.
      + simpl; destruct alpha1.
        * simpl; replace (S (n + i)) with (n + S i)%nat; auto.
-       *  simpl; assert (nf alpha2) by eauto with T1.
+       *  simpl. 
+          assert (nf alpha2). {
+            destruct alpha2; [simpl; tauto|].
+            destruct H as [Ha [Hb Hlt]].
+            assumption.
+          }
           generalize  (IHalpha2 H0 (S i)).
           replace (fin (S i)) with (FS i); auto.
           replace (fin (S (S  i))) with (FS (S i)).
@@ -1841,7 +1891,6 @@ Proof.
 Qed.
 
 (** **  [plus] and [LT] *)
-
 
 Lemma plus_ocons_ocons_rw1 :
   forall a n b a' n' b',
@@ -1857,16 +1906,21 @@ Proof.
     now apply compare_lt_iff in H as ->.
 Qed.
 
-
 Lemma plus_ocons_ocons_rw2 :
   forall a n b n' b', 
   nf (ocons a n b) ->
   nf (ocons a n' b') ->
   ocons a n b + ocons a n' b' = ocons a (S (n + n')) b'.
 Proof.
-  cbn; destruct a.
-  - intros n b n' b' H H0; now rewrite (nf_of_finite H0).
-  - now  rewrite compare_refl.
+  destruct a.
+  - intros n b n' b' H H0. 
+    now rewrite (nf_of_finite _  _ H0).
+  - intros n0 b n' b' H H0.
+    cbn.
+    rewrite compare_refl.
+    rewrite compare_refl.
+    rewrite Nat.compare_refl.
+    reflexivity.
 Qed.
 
 Lemma plus_ocons_ocons_rw3 :
@@ -1877,8 +1931,14 @@ Lemma plus_ocons_ocons_rw3 :
   ocons a n b + ocons a' n' b'= 
   ocons a n (b + (ocons a' n' b')).
 Proof.
-  simpl;intros a n b a' n' b' H H0 H1.
-  now apply compare_gt_iff in H as ->.
+  intros a n b a' n' b' H H0 H1.
+  assert (compare a a' = Gt). {
+    apply compare_gt_iff.
+    assumption.
+  }
+  simpl.
+  rewrite H2.
+  reflexivity.
 Qed.
 
 (** ** On additive principal ordinals *)
@@ -1899,7 +1959,7 @@ Proof.
     + intros H5 H6; case (lt_eq_lt_dec c c1_1).
       * destruct 1.
         { rewrite (plus_ocons_ocons_rw1 n t n0 c1_2 l); auto. }
-        subst c1_1; rewrite (plus_ocons_ocons_rw2 H1 H5).
+        subst c1_1; rewrite (plus_ocons_ocons_rw2 _ _ _ _ _ H1 H5).
         apply nf_helper_inv  in H6.
         auto with T1.
       * intro H7; rewrite plus_ocons_ocons_rw3;auto.
@@ -1989,7 +2049,6 @@ Proof.
 Defined.
 
 (* begin snippet plusNf *)
-
 Lemma plus_nf:
   forall a, nf a -> forall b, nf b -> nf (a + b). (* .no-out *)
 (*|
@@ -2020,12 +2079,19 @@ Lemma omega_term_plus_rw:
     nf (ocons a n b) ->
     omega_term a n + b = ocons  a n b.
 Proof.
-  simpl; destruct a.
-  -  intros n b H; rewrite (nf_of_finite H); auto.
+  destruct a.
+  -  intros n b H. rewrite (nf_of_finite _ _ H); auto.
   -  destruct b.
      + reflexivity.
      + intro H.
-       now apply nf_inv3, compare_gt_iff in H as ->.
+       apply nf_inv3 in H.
+       assert (compare (ocons a1 n a2) b1 = Gt). {
+         apply compare_gt_iff.
+         assumption.
+       }
+       destruct b1; simpl; [reflexivity|].
+       simpl in H0.
+       rewrite H0; reflexivity.       
 Qed.
 
 
@@ -2091,27 +2157,27 @@ Proof.
      intros _ _ H.
      apply head_lt; auto with T1.
   -  intro H; destruct (not_lt_zero H).
-  - cbn; destruct a1.
+  - destruct a1.
     + destruct b1.
      *  intros H H0 H1;  destruct (lt_inv H).
         destruct (not_lt_zero H2).
         destruct H2.
-        -- destruct H2; auto with arith T1.
+        -- destruct H2; simpl; auto with arith T1.
         -- decompose [and] H2.
            assert (b2 = zero).
            { eapply nf_of_finite; eauto. }
            subst b2.
            destruct (not_lt_zero H6).
      * intros; apply head_lt; auto with T1.
-    + intros H H0 H1; nf_decomp H0; nf_decomp H1.
+    + intros H H0 H1. nf_decomp H0; nf_decomp H1.
       destruct b1.
       * destruct (lt_inv H).
         destruct (not_lt_zero H2).
         destruct H2 as [H2 | H2]; destruct H2; discriminate.
       * destruct (lt_inv H).
-        -- auto with T1.
+        -- simpl; auto with T1.
         -- destruct H2 as [[H2 H3] | H2].
-           ++ rewrite H2; auto with T1.
+           ++ simpl; rewrite H2; auto with T1.
            ++  decompose [and] H2; rewrite H5, H3.
                apply tail_lt.
                apply IHa2 ; auto.
@@ -2245,7 +2311,7 @@ Proof.
     + intros H1 H2; destruct (not_lt_zero H2).
     + destruct alpha.
       * destruct n; intros t H H1;
-          generalize (nf_of_finite H);
+          generalize (nf_of_finite _ _ H);
           intro; subst; compute. right; tauto.
         now left.
       * intros; simpl. left. compute; tauto.
@@ -2261,7 +2327,7 @@ Proof.
     destruct H2; subst b1.
     simpl succ. 
     destruct a1.
-    generalize (nf_of_finite H0).
+    generalize (nf_of_finite _ _ H0).
     intro; subst. 
     generalize (lt_le_S _ _ H3).
 
@@ -2287,7 +2353,7 @@ Proof.
     auto.
     cbn.
     destruct b1.
-    generalize (nf_of_finite H0). 
+    generalize (nf_of_finite _ _ H0). 
     intro; subst.
     decompose [and] H2.
     destruct (not_lt_zero H7).
@@ -2437,11 +2503,11 @@ Lemma mult_1_a :
 Proof.
   induction a. 
   - reflexivity.
-  - cbn; simpl in IHa2.
+  - simpl in IHa2.
     intro H; case_eq a1.
-    + intro; subst a1;  rewrite (nf_of_finite H);
+    + intro; subst a1;  rewrite (nf_of_finite _ _ H); simpl;
         now rewrite <- (plus_n_O n).
-    + intros t n0 t0 H0; subst a1; rewrite IHa2.
+    + intros t n0 t0 H0; subst a1; simpl; rewrite IHa2.
       * reflexivity.
       *  eapply nf_inv2;eauto.
 Qed.
@@ -2451,11 +2517,11 @@ Lemma mult_a_1 :
 Proof.
   induction a.
   - reflexivity.
-  - cbn;  simpl in IHa2.
+  - simpl in IHa2.
     intro H;  case_eq a1.
-    intro; subst a1; rewrite mult_1_r.
-    now rewrite (nf_of_finite H).
-    intros; subst a1; now  rewrite mult_1_r.
+    intro; subst a1; simpl; rewrite mult_1_r.
+    now rewrite (nf_of_finite _ _ H).
+    intros; subst a1; simpl; now  rewrite mult_1_r.
 Qed.
 
 Lemma mult_nf_fin alpha n:
@@ -2551,19 +2617,20 @@ Abort.
 
 Lemma phi0_eq : forall alpha, nf alpha -> omega ^ alpha =  phi0 alpha.
 Proof.
-  simple induction alpha; cbn.
+  simple induction alpha.
   - reflexivity.
-  - destruct alpha0; cbn.
-    + intros H n t H0 H1;  generalize (nf_of_finite H1);
+  - destruct alpha0.
+    + intros H n t H0 H1.
+      generalize (nf_of_finite _ _ H1).
       intro; subst;
       case n; cbn.
       * reflexivity.
       * induction n0; cbn.
         reflexivity.
         rewrite IHn0;  reflexivity.
-    + intros  H n0 t H0 H1; unfold omega_term;
-      rewrite H0; cbn.
-      rewrite <- (omega_term_plus_rw H1);
+    + intros H n0 t H0 H1; unfold omega_term.
+      simpl; rewrite H0.
+      rewrite <- (omega_term_plus_rw _ _ _ H1);
       rewrite phi0_plus_mult.
       1-2: unfold omega_term.
       3-4: eapply nf_inv2; eauto.
@@ -2597,8 +2664,8 @@ Theorem unique_decomposition :
     omega ^ a' * FS n' + b' ->
     a = a' /\ n = n' /\ b = b'.
 Proof.
-  intros a n b a' n' b' N N'; rewrite <- (ocons_def N);
-    rewrite <- (ocons_def N'); now injection 1.
+  intros a n b a' n' b' N N'; rewrite <- (ocons_def _ _ _ N);
+    rewrite <- (ocons_def _ _ _ N'); now injection 1.
 Qed.
 
 Theorem Cantor_normal_form :
@@ -2652,7 +2719,7 @@ Proof.
       now compute.
      }
      subst alpha1;  right; exists n.
-     generalize (nf_of_finite H1).
+     generalize (nf_of_finite _ _ H1).
      intro; now subst.
   - destruct H as [[H3 H4] |[H3 [H4 H5]]].
     destruct (Nat.nlt_0_r _ H4).
@@ -2667,7 +2734,7 @@ Ltac T1_inversion H :=
                   | lt (ocons _ _ _) (ocons _ _ _) =>
                     destruct (lt_inv H)
                   | nf (ocons zero ?n ?y) => let e := fresh "e" in
-                                             generalize (nf_of_finite H);
+                                             generalize (nf_of_finite _ _ H);
                                              intros  e
   end.
 
@@ -2682,7 +2749,7 @@ Proof.
     T1_inversion H.
     destruct H as [[H4 H5] |[H4 [H5 H6]]].
     subst. 
-    generalize (nf_of_finite H1).
+    generalize (nf_of_finite _ _ H1).
     intro;subst. 
     right; exists n0.
     split; auto with T1 arith.
@@ -2928,8 +2995,8 @@ Section Proof_of_mult_nf.
 
     Lemma L3 n p : alpha = FS n -> beta = FS p -> P beta.
     Proof.
-      intros; subst; red; intros; split.
-      - apply (mult_nf_fin  (S p) H).
+      intros; subst; split.
+      - trivial.
       - intros _ gamma H1; destruct (LT_of_finite H1 ).
         + subst; rewrite mult_a_0; eauto with T1.
         +  destruct H0 as [p0 [H2 H3]]; subst; simpl.
@@ -2992,7 +3059,7 @@ Section Proof_of_mult_nf.
       }
       split; auto.
       intros _ gamma H3; assert (nf gamma) by eauto with T1.
-      destruct (cases_for_mult  H2).
+      destruct (cases_for_mult _ H2).
       - subst;rewrite mult_a_0; auto.
         rewrite L7; auto.
       -  destruct H4.
@@ -3023,7 +3090,7 @@ Section Proof_of_mult_nf.
 
     Lemma L9 : forall n c, nf c -> c <> zero -> FS n * c <> zero.
     Proof.
-      intros n c H H0; destruct (cases_for_mult  H) as [| H1].
+      intros n c H H0; destruct (cases_for_mult _ H) as [| H1].
       - contradiction.
       -  destruct H1 as [H1 | [ H1 | H1]].
          +   destruct H1; subst;   discriminate.
@@ -3037,7 +3104,7 @@ Section Proof_of_mult_nf.
                                 a <>zero -> c <> zero ->
                                 ocons a n b * c <> zero.
     Proof.
-      intros a n b c H H0 H1 H2; destruct (cases_for_mult    H).
+      intros a n b c H H0 H1 H2; destruct (cases_for_mult _ H).
       -  subst; now destruct H2.
       - destruct H3 as [H3 | [H3 | H3]].
         + destruct H3; subst; rewrite L03; auto; discriminate.
@@ -3086,7 +3153,7 @@ Section Proof_of_mult_nf.
       } 
       split; auto.
       intros _ gamma H4; assert (nf gamma) by eauto with T1.
-      destruct (cases_for_mult  H3).
+      destruct (cases_for_mult _ H3).
       -  subst; rewrite mult_a_0; auto.
          rewrite L6; auto.
          apply LT1; rewrite <- L6; auto.
@@ -3179,7 +3246,7 @@ Section Proof_of_mult_nf.
       split; auto.
       intros _ gamma Hgamma; assert (nf gamma) by eauto with T1.
       rewrite L05; auto.
-      destruct (cases_for_mult  H2).
+      destruct (cases_for_mult _ H2).
       -  subst; rewrite mult_a_0; apply LT1.
          rewrite <- L05; auto.
       -  destruct H4.
@@ -3254,9 +3321,9 @@ Section Proof_of_mult_nf.
 
 
     Lemma L13 : P beta.
-      destruct (cases_for_mult  Halpha).
+      destruct (cases_for_mult _ Halpha).
       - apply L1;auto.
-      - destruct (cases_for_mult  Hbeta).
+      - destruct (cases_for_mult _ Hbeta).
         + apply L2; auto.
         + destruct H as [[n Hn] | ].
           destruct H0 as [[p Hp] | ].
@@ -3309,7 +3376,7 @@ Theorem mult_nf alpha beta : nf alpha -> nf beta ->
                              nf (alpha * beta).
 Proof.
   intros.
-  destruct  (L14   H  H0); auto. 
+  destruct  (L14  _ H  _ H0); auto. 
 Qed.
 
 
@@ -3359,8 +3426,8 @@ Lemma limitb_cases : forall alpha n beta,
     { alpha <> zero /\ beta = zero} +
     {alpha <> zero /\ limitb beta }.
 Proof.
-  intros alpha n beta H;  simpl;  destruct alpha.
-  - discriminate.
+  intros alpha n beta H;  destruct alpha.
+  - simpl; intros; tauto.
   - destruct beta.
     +  left; split;auto.
        discriminate.
@@ -3372,14 +3439,14 @@ Lemma pred_of_succ : forall  beta,  nf beta -> pred (succ beta) = Some beta.
 Proof.
   induction beta.
   - reflexivity.
-  - simpl; destruct beta1.
+  - destruct beta1.
     + intros; replace beta2 with zero.   
       reflexivity. 
       { T1_inversion H. auto.      }
     +  intros; simpl;  destruct n.
        *   destruct beta2.
            { reflexivity. }
-           { simpl;  destruct (beta2_1).
+           { destruct (beta2_1).
              - f_equal.
                cbn. 
                apply nf_inv2 in H. 
@@ -3390,9 +3457,14 @@ Proof.
                f_equal.
                injection   IHbeta2.
                intro;subst;auto.
-               eapply nf_inv2;eauto. 
-               discriminate IHbeta2.
-               eapply nf_inv2;eauto. 
+               destruct beta1_2; [tauto|].
+               destruct H as [Ha [Hb Hlt]].
+               tauto.
+               destruct beta2_2.
+               destruct H as [Ha [Hb Hlt]].
+               intuition congruence.
+               destruct H as [Ha [Hb Hlt]].
+               intuition congruence.               
            }           
        * rewrite IHbeta2;   auto.
          apply nf_inv2 in H; eauto. 
@@ -3407,14 +3479,14 @@ Lemma pred_of_limit : forall alpha, nf alpha ->
 Proof.
   intros; induction alpha.
   - reflexivity. 
-  -    simpl; destruct alpha1.
-       +   destruct n;  simpl in H0; discriminate.
-       +   destruct (limitb_cases  H H0).
-           *  destruct a.    
-              subst.
-              reflexivity.
-           * destruct a; rewrite IHalpha2;auto.
-             eauto with T1.
+  - destruct alpha1.
+    + destruct n;  simpl in H0; contradiction.
+    + destruct (limitb_cases _ _ _ H H0).
+      * destruct a.    
+        subst.
+        reflexivity.
+      * destruct a; simpl; rewrite IHalpha2;auto.
+        eauto with T1.
 Qed.
 
 
@@ -3448,8 +3520,9 @@ Proof with eauto with T1.
           right;  exists (ocons (ocons gamma1 n0 gamma2) n beta0).
           split.
           { apply nf_intro; auto.
-            inversion H; auto.
-            apply nf_inv1 in H. auto. 
+            apply nf_inv1 in H.
+            assumption.            
+
             apply nf_helper_phi0R; apply lt_trans with (succ beta0);auto.
             apply lt_succ.
             apply nf_helper_phi0;  eapply nf_helper_intro; eauto.
@@ -3462,8 +3535,8 @@ Defined.
 Lemma pred_of_limitR : forall alpha, nf alpha -> alpha <> zero ->
                                      pred alpha = None -> limitb alpha.
 Proof.
-  intros alpha Halpha; destruct (zero_limit_succ_dec Halpha).
-  - destruct s; auto.
+  intros alpha Halpha; destruct (zero_limit_succ_dec _ Halpha).
+  - destruct s; intros; auto; contradiction.
   - destruct s  as [x [H H0]]; subst.
     rewrite pred_of_succ; auto.
     + discriminate.
@@ -3474,7 +3547,7 @@ Qed.
 Lemma pred_LT : forall alpha beta, nf alpha -> pred alpha = Some beta ->
                                    beta t1< alpha .
 Proof.
-  intros; destruct (zero_limit_succ_dec H).
+  intros; destruct (zero_limit_succ_dec _ H).
   - destruct s.
     +  subst; discriminate.
     +   rewrite pred_of_limit in H0; trivial.
@@ -3495,16 +3568,14 @@ Qed.
 Lemma pred_nf : forall alpha beta, nf alpha -> pred alpha = Some beta ->
                                    nf  beta.
 Proof.
-  intros alpha beta H H0; now destruct (pred_LT H H0).
+  intros alpha beta H H0; now destruct (pred_LT _ H H0).
 Qed.
 
-
-
-Lemma limitb_succ : forall alpha, nf alpha ->  ~ limitb (succ alpha) .
+Lemma limitb_succ : forall alpha, nf alpha ->  ~ limitb (succ alpha).
   induction alpha.
-  - discriminate.
+  - intro Hz. simpl. tauto.
   - intros;  simpl;  destruct alpha1.
-    + discriminate. 
+    + tauto.
     + simpl; case_eq (succ alpha2).
       *  intros; now destruct (succ_not_zero alpha2).
       *  intros; rewrite <- H0; apply IHalpha2; eauto with T1.
@@ -3520,7 +3591,7 @@ Qed.
 Lemma limitb_not_zero : forall alpha, nf alpha -> limitb alpha  ->
                                         alpha <> zero.
 Proof.
-  unfold not; intros; subst;discriminate.
+  unfold not; intros; subst;tauto.
 Qed.
 
 
@@ -3531,7 +3602,7 @@ Lemma limitb_succ_tail :
   forall alpha n beta, nf beta ->  ~ limitb (ocons alpha n (succ beta)).
 Proof.  
   simpl;intros; destruct alpha.
-  - discriminate.
+  - tauto.
   -  case_eq (succ beta).
      + intro; now destruct (succ_not_zero beta).
      +  intros gamma p delta H0;  rewrite <- H0; now  apply limitb_succ.
@@ -3541,23 +3612,24 @@ Qed.
 Lemma succ_not_limit : forall alpha:T1, succb alpha -> limitb alpha = false.
 Proof.
   induction  alpha. 
-  intro; discriminate.
+  intro; tauto.
   simpl.
   destruct alpha1.
-  auto.
+  intro; reflexivity.
   intro.
   rewrite IHalpha2;auto.
   destruct alpha2;auto.
+  simpl in H; tauto.
 Qed.
 
 
 Lemma succb_def alpha (Halpha : nf alpha) :
   succb alpha -> {beta | nf beta /\ alpha = succ  beta}.
 Proof.
-  intro H; destruct   (zero_limit_succ_dec Halpha) as [[H0 | H0] | H0].
-  - subst alpha; discriminate.
+  intro H; destruct   (zero_limit_succ_dec _ Halpha) as [[H0 | H0] | H0].
+  - subst alpha. simpl in H; tauto.
   - rewrite succ_not_limit in H0; trivial.
-    discriminate.
+    inversion H0.
   -   exact H0.
 Defined.
 
@@ -3572,7 +3644,7 @@ Lemma succb_iff alpha (Halpha : nf alpha) :
 |*)
 Proof.
   split.
-  intro H; destruct (succb_def Halpha).  
+  intro H; destruct (succb_def _ Halpha).  
   - trivial.   
   - now exists x.
                - destruct 1 as [beta [Hbeta  H'beta]].
@@ -3649,7 +3721,7 @@ Qed.
 Lemma eq_succ_lt : forall alpha beta, nf beta -> alpha = succ beta ->
                                       lt  beta  alpha.
 Proof. 
-  intros alpha beta H H0; destruct (eq_succ_LT H H0); tauto.
+  intros alpha beta H H0; destruct (eq_succ_LT _ H H0); tauto.
 Qed. 
 
 
@@ -3688,7 +3760,7 @@ Lemma strict_lub_limitb : forall (alpha :T1)(s : nat -> T1),
     nf alpha -> strict_lub s alpha -> limitb alpha.
 Proof.
   destruct 2.
-  destruct (zero_limit_succ_dec H).
+  destruct (zero_limit_succ_dec _ H).
   destruct s0.
   - 
     subst.
@@ -3730,7 +3802,7 @@ Proof.
   - intro i;  destruct i; compute; auto.
   -   intros  alpha H .
       assert (Hnf : nf alpha) by eapply (LE_nf_r (H 0)).
-      + destruct (LT_eq_LT_dec nf_omega Hnf ) as [[H0 | H0] | H0].
+      + destruct (LT_eq_LT_dec _ _ nf_omega Hnf ) as [[H0 | H0] | H0].
         *  now apply LE_r.
         *  subst; now apply LE_refl.
         * destruct  (lt_omega_inv H0).
@@ -3760,7 +3832,7 @@ Lemma LT_succ_LT_eq_dec :
 Proof. 
   intros.
   destruct H1 as [H2 [H3 H4]].
-  generalize (lt_succ_le_2 H H0 H3).
+  generalize (lt_succ_le_2 H _ H0 H3).
   intro.
   apply le_eq_lt_dec in H1 as [Heq | Hlt].
   - now right.
@@ -3774,7 +3846,7 @@ Lemma lt_succ_le_2':
 Proof.
   intros.
   destruct H1 as [H2 [H3 H4]].
-  generalize (lt_succ_le_2  H2 H0 H3); auto.
+  generalize (lt_succ_le_2  H2 _ H0 H3); auto.
   intro H5.
   apply le_eq_lt_dec in H5 as [Heq | Hlt]; auto.
   left; split; auto.
@@ -3926,7 +3998,11 @@ Section Proof_of_dist.
         now apply compare_lt_iff in Hlt as ->.
     - compare destruct a1_1 c1_1 as Hcomp_a11_c11.
       + apply lt_inv_strong in Hcomp_b1_c1 as [Hlt | Heqa  Hlt | Heqa Heqn Hlt].
-        * apply compare_gt_iff in Hlt as ->.
+        * assert (compare a1_1 b1_1 = Gt). {
+            apply compare_gt_iff.
+            assumption.
+          }
+          rewrite H.
           eenough (compare (ocons a1_1 n3 _) (ocons a1_1 (S (n3 + _)) _) = Lt) as -> by reflexivity.
           apply compare_lt_iff, coeff_lt; lia.
         * rewrite Heqa, compare_refl.
@@ -3946,28 +4022,51 @@ Section Proof_of_dist.
                            (ocons c1_1 _ _) = Lt) as -> by reflexivity.
           now apply compare_lt_iff, head_lt.
       + apply lt_inv_strong in Hcomp_b1_c1 as [Hlt | Heqa  Hlt | Heqa Heqn Hlt].
-        * apply (@lt_trans b1_1 c1_1 a1_1), compare_gt_iff in Hcomp_a11_c11 as ->; auto.
+        * apply (@lt_trans b1_1 c1_1 a1_1) in Hcomp_a11_c11; auto.
+          assert (compare a1_1 b1_1 = Gt). {
+            apply compare_gt_iff.
+            assumption.
+          }
+          rewrite H.
           eenough (compare (ocons a1_1 n3 (a1_2 + ocons b1_1 _ _))
                            (ocons a1_1 n3 (a1_2 + ocons c1_1 _ _)) = Lt) as -> by reflexivity.
           now apply compare_lt_iff, tail_lt, reduce_lt_plus, head_lt.
         * subst.
-          apply compare_gt_iff in Hcomp_a11_c11 as ->.
+          assert (compare a1_1 c1_1 = Gt). {
+            apply compare_gt_iff.
+            assumption.
+          }
+          rewrite H.
           eenough (compare (ocons a1_1 n3 (a1_2 + ocons c1_1 n2 _))
                            (ocons a1_1 n3 (a1_2 + ocons c1_1 n4 _)) = Lt) as -> by reflexivity.
           now apply compare_lt_iff, tail_lt, reduce_lt_plus, coeff_lt.
         * subst.
-          apply compare_gt_iff in Hcomp_a11_c11 as ->.
+          assert (compare a1_1 c1_1 = Gt). {
+            apply compare_gt_iff.
+            assumption.
+          }
+          rewrite H.
           enough (compare (ocons a1_1 n3 (a1_2 + ocons c1_1 n4 b1_2))
                           (ocons a1_1 n3 (a1_2 + ocons c1_1 n4 c1_2)) = Lt) as -> by reflexivity.
           now apply compare_lt_iff, tail_lt, reduce_lt_plus, tail_lt.
     -  rewrite_ind Hind b2. 
     -  rewrite_ind Hind b2.
        apply lt_inv_strong in Hcomp_b1_c1 as [Hlt | Heqa  Hlt | Heqa Heqn Hlt].
-       + now apply compare_gt_iff in Hlt as ->. 
+       + assert (compare b1_1 c1_1 = Gt). {
+           apply compare_gt_iff.
+           assumption.
+         }
+         rewrite H.
+         reflexivity.
        + rewrite Heqa, compare_refl.
          now apply Nat.compare_gt_iff in Hlt as ->.
        + rewrite Heqa, Heqn, compare_refl, Nat.compare_refl.
-         now apply compare_gt_iff in Hlt as ->.
+         assert (compare b1_2 c1_2 = Gt). {
+           apply compare_gt_iff.
+           assumption.
+         }
+         rewrite H.
+         reflexivity.
     -  rewrite_ind Hind b2.
        compare destruct a1_1 b1_1 as Hcomp_a11_b11.
        + eenough (compare (ocons a1_1 (S (n3 + n2)) _)
@@ -3996,7 +4095,12 @@ Section Proof_of_dist.
        + eenough (compare (ocons b1_1 _ _)
                           (ocons a1_1 _ _) = Gt) as -> by reflexivity.
          now apply compare_gt_iff, head_lt.
-       + now apply compare_gt_iff in Hcomp_b1_c1 as ->.
+       + assert (compare (ocons b1_1 n2 b1_2) (ocons c1_1 n4 c1_2) = Gt). {
+           apply compare_gt_iff.
+           assumption.
+         }
+         rewrite H.
+         reflexivity.
        + eenough (compare (ocons b1_1 _ _) (ocons a1_1 _ _) = Gt) as -> by reflexivity.
          now apply compare_gt_iff, head_lt.
        + now apply lt_inv_head, le_not_gt in Hcomp_b1_c1.
@@ -4015,7 +4119,7 @@ Section Proof_of_dist.
     nf a -> nf b -> nf c ->
     a * (b + c) = a * b + a * c.
   Proof.
-    intros Ha Hb Hc; apply (L0 Ha Hb Hc); auto.
+    intros Ha Hb Hc; apply (L0 _ _ _ Ha Hb Hc); auto.
   Qed.
 
 End Proof_of_dist.
@@ -4228,13 +4332,13 @@ Compute pp alpha_0.
 
 (* begin snippet nfAlpha0 *)
 
-Compute nf_b alpha_0.
+Compute decide (nf alpha_0).
 
 (* end snippet nfAlpha0 *)
 
 (* begin snippet nfBadTerm *)
 
-Compute nf_b bad_term.
+Compute decide (nf bad_term).
 
 (* end snippet nfBadTerm *)
 
